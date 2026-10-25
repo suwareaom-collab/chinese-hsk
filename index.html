@@ -1,0 +1,365 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>แผนที่คำศัพท์ภาษาจีน HSK 1–2</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #111827;
+  color: white;
+  font-family: "Noto Sans Thai", "Microsoft YaHei", sans-serif;
+}
+header {
+  padding: 18px;
+  background: #1e293b;
+  text-align: center;
+}
+h1 { margin: 0 0 8px; font-size: 25px; }
+header p { color: #cbd5e1; margin: 0 0 15px; }
+.controls {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+input, select, button {
+  padding: 10px;
+  border-radius: 9px;
+  border: 1px solid #64748b;
+  background: #334155;
+  color: white;
+  font: inherit;
+}
+button { cursor: pointer; }
+#map {
+  width: 100%;
+  height: 68vh;
+  min-height: 450px;
+  display: block;
+  background: radial-gradient(circle, #27364c, #111827);
+  touch-action: none;
+  cursor: grab;
+}
+.node { cursor: pointer; }
+.node text {
+  fill: white;
+  text-anchor: middle;
+  pointer-events: none;
+  font-weight: bold;
+}
+#detail {
+  display: none;
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(360px, 92vw);
+  padding: 20px;
+  border: 1px solid #64748b;
+  border-radius: 18px;
+  background: #263449;
+  box-shadow: 0 10px 40px #0009;
+  text-align: center;
+  z-index: 10;
+}
+#detail h2 { font-size: 42px; margin: 8px; }
+#pinyin { color: #93c5fd; font-size: 22px; }
+#meaning { font-size: 19px; }
+#legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 15px;
+}
+.chip { font-size: 14px; }
+.dot {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+footer { text-align: center; color: #94a3b8; padding: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>中文词汇地图 · HSK 1–2</h1>
+  <p>แผนที่คำศัพท์ภาษาจีนแบบโต้ตอบ</p>
+  <div class="controls">
+    <input id="search" placeholder="ค้นหาจีน / พินอิน / ไทย">
+    <select id="level">
+      <option value="all">HSK 1–2 ทั้งหมด</option>
+      <option value="1">HSK 1</option>
+      <option value="2">HSK 2</option>
+    </select>
+    <button onclick="resetView()">คืนค่ามุมมอง</button>
+  </div>
+</header>
+
+<svg id="map">
+  <g id="viewport"></g>
+</svg>
+
+<div id="legend"></div>
+
+<div id="detail">
+  <button onclick="closeDetail()">✕ ปิด</button>
+  <h2 id="hanzi"></h2>
+  <div id="pinyin"></div>
+  <p id="meaning"></p>
+  <p id="example"></p>
+  <button onclick="speak()">🔊 ฟังเสียงภาษาจีน</button>
+</div>
+
+<footer>
+  ลากเพื่อเลื่อนแผนที่ • หมุนล้อเมาส์เพื่อซูม • คลิกวงกลมเพื่อเรียนรู้
+</footer>
+
+<script>
+// หมวดหมู่และสี
+const groups = [
+  {id:"greet", name:"ทักทาย", color:"#e879a6", x:-250,y:-160},
+  {id:"family", name:"ครอบครัว", color:"#a78bfa", x:50,y:-170},
+  {id:"food", name:"อาหาร", color:"#fb923c", x:300,y:-100},
+  {id:"school", name:"โรงเรียน", color:"#38bdf8", x:-240,y:160},
+  {id:"time", name:"เวลา", color:"#facc15", x:40,y:170},
+  {id:"shopping", name:"ซื้อของ", color:"#4ade80", x:300,y:180}
+];
+
+// เพิ่มคำศัพท์ได้ตามรูปแบบ:
+// [ภาษาจีน, พินอิน, คำแปล, HSK, หมวด, ตัวอย่าง]
+const words = [
+  ["你好","nǐ hǎo","สวัสดี",1,"greet","你好！สวัสดี!"],
+  ["谢谢","xièxie","ขอบคุณ",1,"greet","谢谢你。ขอบคุณคุณ"],
+  ["再见","zàijiàn","ลาก่อน",1,"greet","老师，再见！ลาก่อนคุณครู"],
+  ["对不起","duìbuqǐ","ขอโทษ",1,"greet","对不起。ขอโทษ"],
+  ["欢迎","huānyíng","ยินดีต้อนรับ",2,"greet","欢迎你！ยินดีต้อนรับ"],
+
+  ["妈妈","māma","แม่",1,"family","我爱妈妈。ฉันรักแม่"],
+  ["爸爸","bàba","พ่อ",1,"family","我爱爸爸。ฉันรักพ่อ"],
+  ["朋友","péngyou","เพื่อน",1,"family","他是我的朋友。เขาเป็นเพื่อนฉัน"],
+  ["哥哥","gēge","พี่ชาย",2,"family","我有一个哥哥。ฉันมีพี่ชายหนึ่งคน"],
+
+  ["水","shuǐ","น้ำ",1,"food","我喝水。ฉันดื่มน้ำ"],
+  ["米饭","mǐfàn","ข้าวสวย",1,"food","我吃米饭。ฉันกินข้าว"],
+  ["苹果","píngguǒ","แอปเปิล",1,"food","我喜欢苹果。ฉันชอบแอปเปิล"],
+  ["牛奶","niúnǎi","นม",2,"food","我喝牛奶。ฉันดื่มนม"],
+
+  ["老师","lǎoshī","ครู",1,"school","她是老师。เธอเป็นครู"],
+  ["学生","xuésheng","นักเรียน",1,"school","我是学生。ฉันเป็นนักเรียน"],
+  ["学校","xuéxiào","โรงเรียน",1,"school","我去学校。ฉันไปโรงเรียน"],
+  ["考试","kǎoshì","สอบ",2,"school","明天有考试。พรุ่งนี้มีสอบ"],
+
+  ["今天","jīntiān","วันนี้",1,"time","今天星期一。วันนี้วันจันทร์"],
+  ["明天","míngtiān","พรุ่งนี้",1,"time","明天见。เจอกันพรุ่งนี้"],
+  ["现在","xiànzài","ตอนนี้",1,"time","现在几点？ตอนนี้กี่โมง"],
+  ["起床","qǐchuáng","ตื่นนอน",2,"time","我七点起床。ฉันตื่นเจ็ดโมง"],
+
+  ["买","mǎi","ซื้อ",1,"shopping","我买苹果。ฉันซื้อแอปเปิล"],
+  ["商店","shāngdiàn","ร้านค้า",1,"shopping","我去商店。ฉันไปร้านค้า"],
+  ["便宜","piányi","ราคาถูก",2,"shopping","这个很便宜。อันนี้ราคาถูก"]
+];
+
+const svg = document.getElementById("map");
+const viewport = document.getElementById("viewport");
+const NS = "http://www.w3.org/2000/svg";
+let nodes = [], selected = null;
+let scale = 1, panX = 0, panY = 0;
+let drag = null;
+
+function element(tag, attributes, parent) {
+  const el = document.createElementNS(NS, tag);
+  for (const [key, value] of Object.entries(attributes)) {
+    el.setAttribute(key, value);
+  }
+  parent.appendChild(el);
+  return el;
+}
+
+function applyView() {
+  viewport.setAttribute(
+    "transform",
+    `translate(${panX} ${panY}) scale(${scale})`
+  );
+}
+
+function resetView() {
+  const w = svg.clientWidth, h = svg.clientHeight;
+  scale = Math.min(w / 1050, h / 700, 1);
+  panX = w / 2;
+  panY = h / 2;
+  applyView();
+}
+
+function render() {
+  viewport.replaceChildren();
+  nodes = [];
+
+  const query = document.getElementById("search").value
+    .trim().toLowerCase();
+  const level = document.getElementById("level").value;
+
+  const filtered = words.filter(w =>
+    (level === "all" || String(w[3]) === level) &&
+    (!query || w.slice(0,3).join(" ").toLowerCase().includes(query))
+  );
+
+  groups.forEach((group, groupIndex) => {
+    const list = filtered.filter(w => w[4] === group.id);
+    if (!list.length) return;
+
+    element("circle", {
+      cx:group.x, cy:group.y, r:145,
+      fill:group.color, "fill-opacity":0.045,
+      stroke:group.color, "stroke-opacity":0.25,
+      "stroke-dasharray":"5 8"
+    }, viewport);
+
+    const heading = element("text", {
+      x:group.x, y:group.y-150,
+      fill:group.color, "font-size":22,
+      "font-weight":"bold", "text-anchor":"middle"
+    }, viewport);
+    heading.textContent = group.name;
+
+    list.forEach((word, i) => {
+      const angle = i * 2.4 + groupIndex * 0.5;
+      const distance = 25 + Math.sqrt(i) * 45;
+      const x = group.x + Math.cos(angle) * distance;
+      const y = group.y + Math.sin(angle) * distance;
+      const radius = 34;
+
+      const node = element("g", {
+        "class":"node",
+        "role":"button",
+        "tabindex":"0"
+      }, viewport);
+
+      element("circle", {
+        r:radius,
+        fill:group.color,
+        "fill-opacity":0.35,
+        stroke:group.color,
+        "stroke-width":2
+      }, node);
+
+      const label = element("text", {
+        y:7,
+        "font-size":word[0].length > 3 ? 15 : 20
+      }, node);
+      label.textContent = word[0];
+
+      node.addEventListener("click", e => {
+        e.stopPropagation();
+        showDetail(word);
+      });
+
+      node.addEventListener("keydown", e => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          showDetail(word);
+        }
+      });
+
+      nodes.push({node,x,y,phase:i+groupIndex});
+    });
+  });
+}
+
+function animate(time) {
+  if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    nodes.forEach(n => {
+      const x = n.x + Math.sin(time*0.0005+n.phase)*6;
+      const y = n.y + Math.cos(time*0.0004+n.phase)*6;
+      n.node.setAttribute("transform",`translate(${x} ${y})`);
+    });
+  } else {
+    nodes.forEach(n => {
+      n.node.setAttribute("transform",`translate(${n.x} ${n.y})`);
+    });
+  }
+  requestAnimationFrame(animate);
+}
+
+function showDetail(word) {
+  selected = word;
+  document.getElementById("hanzi").textContent = word[0];
+  document.getElementById("pinyin").textContent = word[1];
+  document.getElementById("meaning").textContent = word[2];
+  document.getElementById("example").textContent = word[5];
+  document.getElementById("detail").style.display = "block";
+}
+
+function closeDetail() {
+  document.getElementById("detail").style.display = "none";
+}
+
+function speak() {
+  if (!selected || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(selected[0]);
+  utterance.lang = "zh-CN";
+  utterance.rate = 0.8;
+  const voice = speechSynthesis.getVoices()
+    .find(v => v.lang.toLowerCase().startsWith("zh"));
+  if (voice) utterance.voice = voice;
+  speechSynthesis.speak(utterance);
+}
+
+// ซูมด้วยเมาส์
+svg.addEventListener("wheel", e => {
+  e.preventDefault();
+  const rect = svg.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const old = scale;
+  scale = Math.max(0.25,Math.min(3,scale*(e.deltaY>0?0.9:1.1)));
+  panX = mx-(mx-panX)*scale/old;
+  panY = my-(my-panY)*scale/old;
+  applyView();
+},{passive:false});
+
+// ลากแผนที่
+svg.addEventListener("pointerdown", e => {
+  drag = {x:e.clientX,y:e.clientY,px:panX,py:panY};
+  svg.setPointerCapture(e.pointerId);
+});
+svg.addEventListener("pointermove", e => {
+  if (!drag) return;
+  panX = drag.px+e.clientX-drag.x;
+  panY = drag.py+e.clientY-drag.y;
+  applyView();
+});
+svg.addEventListener("pointerup", () => drag=null);
+svg.addEventListener("pointercancel", () => drag=null);
+
+document.getElementById("search")
+  .addEventListener("input",render);
+document.getElementById("level")
+  .addEventListener("change",render);
+
+// คำอธิบายสี
+groups.forEach(g => {
+  const chip = document.createElement("span");
+  chip.className = "chip";
+  const dot = document.createElement("span");
+  dot.className = "dot";
+  dot.style.background = g.color;
+  chip.append(dot,document.createTextNode(g.name));
+  document.getElementById("legend").appendChild(chip);
+});
+
+resetView();
+render();
+requestAnimationFrame(animate);
+window.addEventListener("resize",resetView);
+</script>
+</body>
+</html>
